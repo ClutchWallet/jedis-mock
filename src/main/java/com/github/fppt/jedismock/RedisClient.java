@@ -11,6 +11,7 @@ import com.github.fppt.jedismock.commands.RedisCommandParser;
 import com.github.fppt.jedismock.exception.ParseErrorException;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -46,7 +47,10 @@ public final class RedisClient implements Runnable {
                 server.getConfiguration(), server.getSubscriptionRegistry());
         this.executor = new RedisOperationExecutor(state);
         this.socket = socket;
-        this.in = socket.getInputStream();
+        // Buffered: the RESP parser (SliceParser.consumeByte) reads one byte at a
+        // time, so an unbuffered socket stream costs one read() syscall per byte
+        // of every command — the dominant cost for anything but tiny payloads.
+        this.in = new BufferedInputStream(socket.getInputStream());
         this.out = socket.getOutputStream();
         this.running = new AtomicBoolean(true);
         this.onClose = onClose;
