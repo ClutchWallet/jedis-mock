@@ -173,6 +173,8 @@ public class RedisServer {
         public Void call() throws IOException {
             while (!server.isClosed()) {
                 Socket socket = server.accept();
+                //Disable Nagle's algorithm, as real Redis does (tcp-nodelay yes).
+                socket.setTcpNoDelay(true);
                 RedisClient rc = new RedisClient(RedisServer.this, socket, clients::remove);
                 clients.add(rc);
                 threadPool.submit(rc);
