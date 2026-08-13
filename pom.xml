@@ -53,12 +53,13 @@
         <junit.version>6.1.3</junit.version>
         <assertj.version>3.27.7</assertj.version>
         <jedis.version>7.5.3</jedis.version>
-        <testcontainers.version>1.21.3</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
         <spotbugs.version>4.10.3.0</spotbugs.version>
         <slf4j.version>2.0.18</slf4j.version>
         <java.version>1.8</java.version>
         <maven.enforcer.plugin.version>3.6.3</maven.enforcer.plugin.version>
         <extra.enforcer.rules.version>1.12.0</extra.enforcer.rules.version>
+        <exec.maven.plugin.version>3.6.1</exec.maven.plugin.version>
     </properties>
 
     <distributionManagement>
@@ -75,11 +76,6 @@
     <dependencies>
         <!-- transitive dependencies -->
         <dependency>
-            <groupId>org.reflections</groupId>
-            <artifactId>reflections</artifactId>
-            <version>0.10.2</version>
-        </dependency>
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
@@ -88,11 +84,6 @@
             <groupId>org.luaj</groupId>
             <artifactId>luaj-jse</artifactId>
             <version>3.0.1</version>
-        </dependency>
-        <dependency>
-            <groupId>redis.clients</groupId>
-            <artifactId>jedis</artifactId>
-            <version>${jedis.version}</version>
         </dependency>
 
         <!-- test dependencies -->
@@ -106,6 +97,12 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>${jedis.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -200,6 +197,36 @@
                                 <requireReleaseDeps/>
                                 <!-- No duplicate <dependency> entries in this POM -->
                                 <banDuplicatePomDependencyVersions/>
+                                <!--
+                                    jedis-mock's published compile scope is deliberately just
+                                    slf4j-api + luaj-jse (see the commit that dropped
+                                    org.reflections and redis.clients:jedis from it). This rule
+                                    is the build-enforced guard for that: it fails the build if
+                                    org.reflections, redis.clients:jedis or com.google.code.gson
+                                    ever reappear on the compile/runtime classpath, including
+                                    transitively, which is exactly how gson arrived in the first
+                                    place, pulled in by jedis. jedis stays legal at test scope,
+                                    where the test suite depends on it heavily. Do not remove this
+                                    without re-confirming compile scope is still slf4j-api +
+                                    luaj-jse only (mvn dependency:tree -Dscope=compile).
+                                -->
+                                <bannedDependencies>
+                                    <searchTransitive>true</searchTransitive>
+                                    <excludes>
+                                        <exclude>org.reflections:reflections:*:*:compile</exclude>
+                                        <exclude>org.reflections:reflections:*:*:runtime</exclude>
+                                        <exclude>org.reflections:reflections:*:*:provided</exclude>
+                                        <exclude>org.reflections:reflections:*:*:system</exclude>
+                                        <exclude>redis.clients:jedis:*:*:compile</exclude>
+                                        <exclude>redis.clients:jedis:*:*:runtime</exclude>
+                                        <exclude>redis.clients:jedis:*:*:provided</exclude>
+                                        <exclude>redis.clients:jedis:*:*:system</exclude>
+                                        <exclude>com.google.code.gson:gson:*:*:compile</exclude>
+                                        <exclude>com.google.code.gson:gson:*:*:runtime</exclude>
+                                        <exclude>com.google.code.gson:gson:*:*:provided</exclude>
+                                        <exclude>com.google.code.gson:gson:*:*:system</exclude>
+                                    </excludes>
+                                </bannedDependencies>
                             </rules>
                             <fail>true</fail>
                         </configuration>
@@ -320,6 +347,55 @@
     </build>
 
     <profiles>
+        <!--
+          Fails the build when the generated command registries or their
+          META-INF/services file no longer match the @RedisCommand annotations,
+          so a contributor who adds a command without registering it finds out
+          from `mvn verify` rather than from a mysteriously unsupported command
+          at runtime. The check only reads: it regenerates into a temporary
+          directory and diffs. Skip with -Dcommand.registries.check.skip=true.
+
+          Unix-only because the generator is a bash script; the same check runs
+          in CI, so a Windows contributor is still covered by the pull request
+          build.
+        -->
+        <profile>
+            <id>check-command-registries</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                </os>
+                <property>
+                    <name>!command.registries.check.skip</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>${exec.maven.plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>check-command-registries</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>${project.basedir}/scripts/generate-command-registries.sh</executable>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <arguments>
+                                        <argument>--check</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <profile>
             <id>release</id>
             <build>

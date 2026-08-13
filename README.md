@@ -52,6 +52,11 @@ Add it as a test dependency in Maven as:
 </dependency>
 ```
 
+Jedis-Mock does not bring a Redis client of its own onto your classpath — add
+whichever client you already use (Jedis, Lettuce, Redisson, ...) as a
+dependency alongside it. The examples below primarily use Jedis, with Lettuce
+and Redisson equivalents shown alongside it.
+
 Create a Redis server and bind it to your client:
 
 ```java
@@ -178,6 +183,10 @@ jedis.lrange("mylist", 0, -1));
 ### Script timeouts: `BUSY` and `SCRIPT KILL`
 
 A long-running (or even infinite) script does not lock up the mock. Once a script has been running longer than `lua-time-limit` milliseconds, other connections get the same `-BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.` reply as real Redis, and `SCRIPT KILL` aborts the running script (replying `-NOTBUSY` when nothing is running). The threshold defaults to 5000 ms and can be changed with `CONFIG SET lua-time-limit <ms>` (its alias `busy-reply-threshold` is also accepted); `0` disables it. This lets you test client behaviour around busy scripts and transactions interrupted by a script timeout.
+
+### Nesting depth and thread stack size
+
+Deeply nested `cjson.encode` input is bounded at 1000 levels, matching real Redis, but the check is recursive. Running with a reduced thread stack size (roughly under 512 KB, e.g. `-Xss256k` or `-Xss512k`) can surface a `StackOverflowError` before the limit is reached, wedging the connection since `StackOverflowError` escapes `pcall`.
 
 Feel free to report an issue if you have any problems with Lua scripting in Jedis-Mock.
 
@@ -316,3 +325,39 @@ Unsupported operation {}
 
 please feel free to create an issue requesting the missing operation, 
 or implement it yourself in interceptor and send us the code. It's fun!
+
+### Adding a command
+
+Command implementations live in `src/main/java/com/github/fppt/jedismock/operations/`,
+one class per command, annotated with `@RedisCommand("name")`. The constructor
+declares what the command needs and the arguments are injected by type — see the
+javadoc on `CommandFactory.buildOperation` for the list of resolvable types.
+
+Registration is explicit: every command class must be listed in a
+`<Package>Commands` registry, and every registry in
+`src/main/resources/META-INF/services/com.github.fppt.jedismock.operations.CommandRegistry`,
+from which `CommandFactory` loads them at startup via `ServiceLoader`.
+
+* Adding a command to an **existing** package — add the class to the
+  `commands()` list in that package's `<Package>Commands` class by hand, or
+  just regenerate it (below).
+* Adding a command in a **brand-new** subpackage — run the generator. It
+  creates the new `<Package>Commands` class and adds it to the service file;
+  `CommandFactory` needs no edit at all.
+
+```bash
+./scripts/generate-command-registries.sh
+```
+
+This single command is the answer to every registration question: it
+regenerates every `<Package>Commands` class from the `@RedisCommand`
+annotations, and the service file that lists them. The script is plain,
+portable `bash` and behaves the same on Linux and macOS.
+
+You don't have to remember to run it. `mvn verify` runs
+`generate-command-registries.sh --check`, which regenerates into a temporary
+directory and fails the build with a diff if the committed registries are
+stale (skip with `-Dcommand.registries.check.skip=true`; the check is
+Unix-only, but CI runs it on every pull request). `CommandRegistryCompletenessTest`
+covers the same ground from the other side, naming the exact class that is
+implemented but not registered.
