@@ -173,6 +173,13 @@ public class RedisServer {
         public Void call() throws IOException {
             while (!server.isClosed()) {
                 Socket socket = server.accept();
+                //Disable Nagle's algorithm, as real Redis does (tcp-nodelay yes).
+                //Without it, a reply that the client answers with another small
+                //write stalls on the peer's 40ms delayed-ACK timer: clients whose
+                //handshake is a sequence of small commands (Lettuce sends HELLO,
+                //PING, CLIENT SETINFO x2, CLIENT MAINT_NOTIFICATIONS) then pay
+                //~40ms per connection, which dominates connection-heavy test suites.
+                socket.setTcpNoDelay(true);
                 RedisClient rc = new RedisClient(RedisServer.this, socket, clients::remove);
                 clients.add(rc);
                 threadPool.submit(rc);
