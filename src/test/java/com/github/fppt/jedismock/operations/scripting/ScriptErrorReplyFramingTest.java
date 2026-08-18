@@ -75,7 +75,7 @@ class ScriptErrorReplyFramingTest {
                 readExactly(in, reply, length + 2); // payload + trailing CRLF
             }
         }
-        return reply.toString(StandardCharsets.UTF_8);
+        return reply.toString(StandardCharsets.UTF_8.name());
     }
 
     private static int readByte(InputStream in) throws IOException {

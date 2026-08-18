@@ -16,6 +16,8 @@ By no means is it intended for production use: e. g. the string value of a singl
 exceed 2 GB, this project has never been tuned for performance or memory footprint, and it doesn't provide disk persistence. What it does provide instead
 are white-box testing capabilities, such as a [command interceptor](#interceptor) and [clock injection](#clockinjection).
 
+Jedis-Mock supports Java 8 and newer. Both its published bytecode and its runtime dependencies are checked for Java 8 compatibility during the build.
+
 [List of currently supported Redis operations](supported_operations.md).
 
 ## Why, if we have TestContainers?

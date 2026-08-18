@@ -71,7 +71,7 @@ public class ConfigComparisonTest {
     public void appendBeyondProtoMaxBulkLenIsRejected(Jedis jedis) {
         jedis.configSet("proto-max-bulk-len", "1048576");
         jedis.del("big");
-        jedis.set("big", "a".repeat(1048576)); // exactly at the limit
+        jedis.set("big", new String(new char[1048576]).replace('\0', 'a')); // exactly at the limit
         assertThatThrownBy(() -> jedis.append("big", "x"))
                 .isInstanceOf(JedisDataException.class)
                 .hasMessageContaining("maximum allowed size");
