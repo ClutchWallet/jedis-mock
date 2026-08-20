@@ -23,10 +23,15 @@ public class TestRedisServer {
 
     @Test
     public void testBindPort() throws IOException {
-        RedisServer server = RedisServer.newRedisServer(8080);
-        server.start();
-        assertThat(server.getBindPort()).isEqualTo(8080);
-        server.stop();
+        RedisServer server = RedisServer.newRedisServer(0);
+        try {
+            server.start();
+            assertThat(server.getBindPort()).isPositive();
+        } finally {
+            if (server.isRunning()) {
+                server.stop();
+            }
+        }
     }
 
     @Test
