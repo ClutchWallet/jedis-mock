@@ -1,0 +1,7 @@
+<extensions xmlns="http://maven.apache.org/EXTENSIONS/1.0.0">
+  <extension>
+    <groupId>org.apache.maven.wagon</groupId>
+    <artifactId>wagon-ssh-external</artifactId>
+    <version>3.5.3</version>
+  </extension>
+</extensions>
