@@ -320,3 +320,31 @@ Unsupported operation {}
 
 please feel free to create an issue requesting the missing operation, 
 or implement it yourself in interceptor and send us the code. It's fun!
+
+### Adding a command
+
+Command implementations live in `src/main/java/com/github/fppt/jedismock/operations/`,
+one class per command, annotated with `@RedisCommand("name")`. The constructor
+declares what the command needs and the arguments are injected by type — see the
+javadoc on `CommandFactory.buildOperation` for the list of resolvable types.
+
+That annotation is the whole of the registration. An annotation processor,
+`CommandRegistryProcessor` under `src/processor/java`, is handed every
+`@RedisCommand` class by javac and uses [JavaPoet](https://github.com/palantir/javapoet)
+to write the lookup tables `CommandFactory` reads at startup: one
+`<Package>Commands` class per operations subpackage, plus a `CommandRegistries`
+class tying them together. There is one registry per package because most
+operation classes are package-private and can only be named from inside their
+own package.
+
+So there is no list to keep in sync and nothing to run by hand — a new command,
+or a whole new subpackage of them, is picked up by the next `mvn compile`. The
+generated sources land in `target/generated-sources/annotations` if you want to
+read them. Neither the processor nor JavaPoet is part of the published artifact:
+the processor is compiled separately into `target/processor-classes` and passed
+to javac on the annotation processor path, and JavaPoet is a `provided`
+dependency, which Maven does not pass on to consumers.
+
+Locating the commands at compile time is also why jedis-mock does not need
+`org.reflections` on your classpath; a `bannedDependencies` enforcer rule keeps
+it from coming back.

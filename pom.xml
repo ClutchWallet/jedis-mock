@@ -59,6 +59,9 @@
         <java.version>1.8</java.version>
         <maven.enforcer.plugin.version>3.6.3</maven.enforcer.plugin.version>
         <extra.enforcer.rules.version>1.12.0</extra.enforcer.rules.version>
+        <javapoet.version>0.19.0</javapoet.version>
+        <processor.sources>${project.basedir}/src/processor/java</processor.sources>
+        <processor.classes>${project.build.directory}/processor-classes</processor.classes>
     </properties>
 
     <distributionManagement>
@@ -75,11 +78,6 @@
     <dependencies>
         <!-- transitive dependencies -->
         <dependency>
-            <groupId>org.reflections</groupId>
-            <artifactId>reflections</artifactId>
-            <version>0.10.2</version>
-        </dependency>
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
@@ -93,6 +91,20 @@
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
             <version>${jedis.version}</version>
+        </dependency>
+
+        <!--
+            Build-only. JavaPoet writes the command registries that replace the old
+            org.reflections classpath scan; it is used by the annotation processor under
+            src/processor/java and is never referenced from src/main/java. Provided scope
+            keeps it off the consumer's classpath (provided is not transitive), which is
+            the point of generating the registries rather than shipping a scanner.
+        -->
+        <dependency>
+            <groupId>com.palantir.javapoet</groupId>
+            <artifactId>javapoet</artifactId>
+            <version>${javapoet.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- test dependencies -->
@@ -195,6 +207,16 @@
                                     <ignoredScopes>
                                         <ignoredScope>test</ignoredScope>
                                     </ignoredScopes>
+                                    <!--
+                                        JavaPoet is Java 17 bytecode, but it only ever runs inside
+                                        javac on the build JDK: it is on the annotation processor
+                                        path, not on anyone's runtime classpath. Excluded by name
+                                        rather than by ignoring provided scope wholesale, so a
+                                        future provided dependency is still checked.
+                                    -->
+                                    <excludes>
+                                        <exclude>com.palantir.javapoet:javapoet</exclude>
+                                    </excludes>
                                 </enforceBytecodeVersion>
                                 <!-- Released library must not depend on SNAPSHOT artifacts -->
                                 <requireReleaseDeps/>
@@ -220,6 +242,24 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
+                Resolves the JavaPoet jar to ${com.palantir.javapoet:javapoet:jar} so that the
+                processor path below can be spelled out without hard-coding a repository layout.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.9.0</version>
+                <executions>
+                    <execution>
+                        <id>resolve-processor-path</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -228,6 +268,56 @@
                     <release>8</release>
                     <testRelease>17</testRelease>
                 </configuration>
+                <executions>
+                    <!--
+                        The command registries are written by an annotation processor, which has
+                        to exist before the sources it processes are compiled. It lives in its own
+                        source root so that it is built here, into its own output directory, and
+                        stays out of both target/classes and the published jar. It targets 17
+                        rather than 8 because it only ever runs inside javac on the build JDK.
+                    -->
+                    <execution>
+                        <id>compile-command-registry-processor</id>
+                        <!--
+                            process-sources, not generate-sources: the source and javadoc jar
+                            goals fork the lifecycle up to generate-sources, and re-running a
+                            compile there leaves the project artifact pointing at this
+                            execution's output directory instead of the built jar.
+                        -->
+                        <phase>process-sources</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${processor.sources}</compileSourceRoot>
+                            </compileSourceRoots>
+                            <outputDirectory>${processor.classes}</outputDirectory>
+                            <release>17</release>
+                            <proc>none</proc>
+                        </configuration>
+                    </execution>
+                    <!--
+                        -processorpath rather than <annotationProcessorPaths>, which only accepts
+                        artifacts and so cannot name the directory the processor was just built
+                        into. Naming the path explicitly also keeps javac from picking up any
+                        processor that happens to be on the compile classpath.
+                    -->
+                    <execution>
+                        <id>default-compile</id>
+                        <configuration>
+                            <annotationProcessors>
+                                <annotationProcessor>
+                                    com.github.fppt.jedismock.processor.CommandRegistryProcessor
+                                </annotationProcessor>
+                            </annotationProcessors>
+                            <compilerArgs>
+                                <arg>-processorpath</arg>
+                                <arg>${processor.classes}${path.separator}${com.palantir.javapoet:javapoet:jar}</arg>
+                            </compilerArgs>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
