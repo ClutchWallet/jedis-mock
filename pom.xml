@@ -92,14 +92,6 @@
             <artifactId>jedis</artifactId>
             <version>${jedis.version}</version>
         </dependency>
-
-        <!--
-            Build-only. JavaPoet writes the command registries that replace the old
-            org.reflections classpath scan; it is used by the annotation processor under
-            src/processor/java and is never referenced from src/main/java. Provided scope
-            keeps it off the consumer's classpath (provided is not transitive), which is
-            the point of generating the registries rather than shipping a scanner.
-        -->
         <dependency>
             <groupId>com.palantir.javapoet</groupId>
             <artifactId>javapoet</artifactId>
@@ -222,6 +214,15 @@
                                 <requireReleaseDeps/>
                                 <!-- No duplicate <dependency> entries in this POM -->
                                 <banDuplicatePomDependencyVersions/>
+                                <bannedDependencies>
+                                    <searchTransitive>true</searchTransitive>
+                                    <excludes>
+                                        <exclude>org.reflections:reflections:*:*:compile</exclude>
+                                        <exclude>org.reflections:reflections:*:*:runtime</exclude>
+                                        <exclude>org.reflections:reflections:*:*:provided</exclude>
+                                        <exclude>org.reflections:reflections:*:*:system</exclude>
+                                    </excludes>
+                                </bannedDependencies>
                             </rules>
                             <fail>true</fail>
                         </configuration>
@@ -242,10 +243,6 @@
                     </execution>
                 </executions>
             </plugin>
-            <!--
-                Resolves the JavaPoet jar to ${com.palantir.javapoet:javapoet:jar} so that the
-                processor path below can be spelled out without hard-coding a repository layout.
-            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
@@ -269,21 +266,8 @@
                     <testRelease>17</testRelease>
                 </configuration>
                 <executions>
-                    <!--
-                        The command registries are written by an annotation processor, which has
-                        to exist before the sources it processes are compiled. It lives in its own
-                        source root so that it is built here, into its own output directory, and
-                        stays out of both target/classes and the published jar. It targets 17
-                        rather than 8 because it only ever runs inside javac on the build JDK.
-                    -->
                     <execution>
                         <id>compile-command-registry-processor</id>
-                        <!--
-                            process-sources, not generate-sources: the source and javadoc jar
-                            goals fork the lifecycle up to generate-sources, and re-running a
-                            compile there leaves the project artifact pointing at this
-                            execution's output directory instead of the built jar.
-                        -->
                         <phase>process-sources</phase>
                         <goals>
                             <goal>compile</goal>
@@ -297,12 +281,6 @@
                             <proc>none</proc>
                         </configuration>
                     </execution>
-                    <!--
-                        -processorpath rather than <annotationProcessorPaths>, which only accepts
-                        artifacts and so cannot name the directory the processor was just built
-                        into. Naming the path explicitly also keeps javac from picking up any
-                        processor that happens to be on the compile classpath.
-                    -->
                     <execution>
                         <id>default-compile</id>
                         <configuration>
