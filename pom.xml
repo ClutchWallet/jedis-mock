@@ -422,5 +422,45 @@
                 </plugins>
             </build>
         </profile>
+        <!-- Dependencies and plugins resolve through Artifact Registry (Clutch modules plus a Maven Central proxy);
+             Maven Central stays as the fallback for public artifacts. The artifactregistry wagon (.mvn/extensions.xml)
+             uses ADC, else the gcloud login; no settings.xml token. CI mirrors clutch-ar to the https URL with its own
+             token. Publishing is unchanged.
+             The repositories sit in this profile, not at the top level, because this POM is published: a consumer
+             reads it as a dependency POM, where there is no basedir, so the file check below is false and the
+             consumer never gets an artifactregistry:// repository it has no wagon for. In this project's own build
+             the file exists, so the profile is on wherever the wagon is loaded. -->
+        <profile>
+            <id>clutch-ar</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/.mvn/extensions.xml</exists>
+                </file>
+            </activation>
+            <repositories>
+                <repository>
+                    <id>clutch-ar</id>
+                    <url>artifactregistry://us-maven.pkg.dev/clutch-artifacts/maven</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>clutch-ar</id>
+                    <url>artifactregistry://us-maven.pkg.dev/clutch-artifacts/maven</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
     </profiles>
 </project>
